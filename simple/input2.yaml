@@ -1,0 +1,8 @@
+variant: fcos
+version: 1.5.0
+
+storage:
+  files:
+    - path: /opt/file
+      contents:
+        inline: Hello, world!
