@@ -20,27 +20,27 @@ func TestMergeFiles(t *testing.T) {
 		config *Options
 		files  []string
 	}{
-		//{
-		//	name: "simple",
-		//	config: &Options{
-		//		FilesDir: "./simple",
-		//	},
-		//	files: []string{
-		//		"input1.yaml",
-		//		"input2.yaml",
-		//	},
-		//},
-		//{
-		//	name: "overwrite",
-		//	config: &Options{
-		//		FilesDir:         "./overwrite",
-		//		DefaultOverWrite: true,
-		//	},
-		//	files: []string{
-		//		"input1.yaml",
-		//		"input2.yaml",
-		//	},
-		//},
+		{
+			name: "simple",
+			config: &Options{
+				FilesDir: "./simple",
+			},
+			files: []string{
+				"input1.yaml",
+				"input2.yaml",
+			},
+		},
+		{
+			name: "overwrite",
+			config: &Options{
+				FilesDir:         "./overwrite",
+				DefaultOverWrite: true,
+			},
+			files: []string{
+				"input1.yaml",
+				"input2.yaml",
+			},
+		},
 		{
 			name: "resolve-path",
 			config: &Options{
