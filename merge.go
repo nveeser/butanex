@@ -72,14 +72,14 @@ func (m *merge) mergeFile(path string) error {
 	return nil
 }
 
-func (m *merge) mergeBytes(relDir string, data []byte) error {
+func (m *merge) mergeBytes(fileRoot string, data []byte) error {
 	config := map[string]any{}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return fmt.Errorf("error reading yaml: %w", err)
 	}
 
-	if relDir != "" {
-		m.resolvePaths(config, "$")
+	if fileRoot != "" {
+		m.resolvePaths(config, fileRoot, "$")
 	}
 	if m.root == nil {
 		m.root = config
@@ -91,22 +91,22 @@ func (m *merge) mergeBytes(relDir string, data []byte) error {
 	return nil
 }
 
-func (m *merge) resolvePaths(object map[string]any, ctxpath string) {
+func (m *merge) resolvePaths(object map[string]any, fileRoot, ctxpath string) {
 	for k, v := range object {
 		cpath := ctxpath + "." + k
-		if vv, ok := m.resolvePathsValue(v, cpath); ok {
+		if vv, ok := m.resolvePathsValue(v, fileRoot, cpath); ok {
 			object[k] = vv
 		}
 	}
 }
 
-func (m *merge) resolvePathsValue(v any, ctxpath string) (any, bool) {
+func (m *merge) resolvePathsValue(v any, fileRoot, ctxpath string) (any, bool) {
 	switch v := v.(type) {
 	// Sequence
 	case []any:
 		var updated []any
 		for _, vi := range v {
-			if upv, ok := m.resolvePathsValue(vi, ctxpath); ok {
+			if upv, ok := m.resolvePathsValue(vi, fileRoot, ctxpath); ok {
 				updated = append(updated, upv)
 			}
 		}
@@ -115,12 +115,12 @@ func (m *merge) resolvePathsValue(v any, ctxpath string) (any, bool) {
 
 	// Mapping
 	case map[string]any:
-		m.resolvePaths(v, ctxpath)
+		m.resolvePaths(v, fileRoot, ctxpath)
 
 	// Scalar
 	case string:
-		if relativeDir, ok := m.resolvePath(ctxpath); ok {
-			vv := filepath.Join(relativeDir, v)
+		if m.resolvePath(ctxpath) {
+			vv := filepath.Join(fileRoot, v)
 			log.Printf("\t Update[%s] %s -> %s", ctxpath, v, vv)
 			return vv, true
 		}
@@ -141,7 +141,7 @@ func (m *merge) mergeMapping(dst, src map[string]any, ctxpath string) error {
 				dst[key] = sv
 
 			case exists && isSlice:
-				if m.isOverwrite(ctxpath) {
+				if !m.isOverwrite(ctxpath) {
 					sv = append(dvv, sv...)
 				}
 				dst[key] = sv
@@ -196,10 +196,10 @@ func (m *merge) mergeMapping(dst, src map[string]any, ctxpath string) error {
 func buildPolicy(c *Options) *mergePolicy {
 	var overwrite []policyEntry[bool]
 	for _, pattern := range c.Overwrite {
-		addPolicy(overwrite, pattern, true)
+		overwrite = addPolicy(overwrite, pattern, true)
 	}
 	for _, pattern := range c.Append {
-		addPolicy(overwrite, pattern, false)
+		overwrite = addPolicy(overwrite, pattern, false)
 	}
 	// Absolute patterns before relative patterns.
 	slices.SortFunc(overwrite, func(a, b policyEntry[bool]) int {
@@ -208,9 +208,9 @@ func buildPolicy(c *Options) *mergePolicy {
 			cmp.Compare(a.pattern, b.pattern))
 	})
 
-	var resolvePaths []policyEntry[string]
+	var resolvePaths []policyEntry[bool]
 	for _, pattern := range c.ResolvePath {
-		addPolicy(resolvePaths, pattern, c.FilesDir)
+		resolvePaths = addPolicy(resolvePaths, pattern, true)
 	}
 	return &mergePolicy{
 		overwrite:        overwrite,
@@ -222,7 +222,7 @@ func buildPolicy(c *Options) *mergePolicy {
 type mergePolicy struct {
 	overwrite        []policyEntry[bool]
 	defaultOverwrite bool
-	resolvePaths     []policyEntry[string]
+	resolvePaths     []policyEntry[bool]
 }
 
 func (m *mergePolicy) isOverwrite(contextPath string) bool {
@@ -234,13 +234,13 @@ func (m *mergePolicy) isOverwrite(contextPath string) bool {
 	return m.defaultOverwrite
 }
 
-func (m *mergePolicy) resolvePath(contextPath string) (string, bool) {
+func (m *mergePolicy) resolvePath(contextPath string) bool {
 	for _, entry := range m.resolvePaths {
 		if entry.match(contextPath) {
-			return entry.policy, true
+			return true
 		}
 	}
-	return "", false
+	return false
 }
 
 type policyEntry[T comparable] struct {
@@ -259,7 +259,7 @@ func (e policyEntry[T]) match(contextPath string) bool {
 	return false
 }
 
-func addPolicy[T comparable](policies []policyEntry[T], pattern string, policy T) {
+func addPolicy[T comparable](policies []policyEntry[T], pattern string, policy T) []policyEntry[T] {
 	if slices.ContainsFunc(policies, func(p policyEntry[T]) bool {
 		return p.pattern == pattern && p.policy != policy
 	}) {
@@ -268,7 +268,7 @@ func addPolicy[T comparable](policies []policyEntry[T], pattern string, policy T
 	if !strings.HasPrefix(pattern, ".") && !strings.HasPrefix(pattern, "$.") {
 		pattern = "$." + pattern
 	}
-	policies = append(policies, policyEntry[T]{
+	return append(policies, policyEntry[T]{
 		pattern:    pattern,
 		policy:     policy,
 		isRelative: strings.HasPrefix(pattern, "."),

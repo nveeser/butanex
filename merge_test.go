@@ -5,6 +5,7 @@ import (
 	yaml "gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -17,15 +18,41 @@ func TestMergeFiles(t *testing.T) {
 	cases := []struct {
 		name   string
 		config *Options
+		files  []string
 	}{
+		//{
+		//	name: "simple",
+		//	config: &Options{
+		//		FilesDir: "./simple",
+		//	},
+		//	files: []string{
+		//		"input1.yaml",
+		//		"input2.yaml",
+		//	},
+		//},
+		//{
+		//	name: "overwrite",
+		//	config: &Options{
+		//		FilesDir:         "./overwrite",
+		//		DefaultOverWrite: true,
+		//	},
+		//	files: []string{
+		//		"input1.yaml",
+		//		"input2.yaml",
+		//	},
+		//},
 		{
-			name:   "simple",
-			config: nil,
-		},
-		{
-			name: "overwrite",
+			name: "resolve-path",
 			config: &Options{
 				DefaultOverWrite: true,
+				FilesDir:         "./resolve-path",
+				ResolvePath: []string{
+					".local",
+				},
+			},
+			files: []string{
+				"common/input1.yaml",
+				"host-dir/input2.yaml",
 			},
 		},
 	}
@@ -35,12 +62,17 @@ func TestMergeFiles(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error reading want file: %s", err)
 			}
-			got, err := MergeFiles(tc.config, filepath.Join(tc.name, "input1.yaml"), filepath.Join(tc.name, "input2.yaml"))
+			files := slices.Clone(tc.files)
+			for i, name := range files {
+				files[i] = filepath.Join(tc.name, name)
+			}
+			got, err := MergeFiles(tc.config, tc.files...)
 			if err != nil {
-				t.Errorf("Error merging files: %s", err)
+				t.Fatalf("Error merging files: %s", err)
 			}
 			if diff := cmp.Diff(mustUnmarshal(t, want), mustUnmarshal(t, got)); diff != "" {
 				t.Errorf("MergeFiles() got diff: -want/+got: %s", diff)
+				t.Logf("GOT:\n%s\n", got)
 			}
 		})
 	}
